@@ -1,0 +1,127 @@
+name: Sync upstream and publish AMD64 image
+
+on:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even if upstream has not changed
+        type: boolean
+        default: false
+  push:
+    branches: [container]
+    paths:
+      - '.github/workflows/container.yml'
+      - 'ci/**'
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: sparkdash-amd64
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out packaging branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: container
+
+      - name: Sync upstream main and decide whether to build
+        id: upstream
+        env:
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          FORCE: ${{ inputs.force || false }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/$REPOSITORY/merge-upstream" -f branch=main
+          sha=$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          image="ghcr.io/${REPOSITORY,,}"
+          previous=$(cat .upstream-sha 2>/dev/null || true)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          if [[ "$sha" != "$previous" || "$FORCE" == true || "$EVENT_NAME" == push ]]; then
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+            echo "Upstream $sha is already published." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check out exact upstream revision
+        if: steps.upstream.outputs.build == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.upstream.outputs.sha }}
+          path: source
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        if: steps.upstream.outputs.build == 'true'
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build AMD64 image
+        if: steps.upstream.outputs.build == 'true'
+        env:
+          IMAGE: ${{ steps.upstream.outputs.image }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          docker buildx build source \
+            --platform linux/amd64 --load \
+            --build-arg NODE_IMAGE=docker.io/library/node:22-bookworm-slim \
+            --cache-from type=gha --cache-to type=gha,mode=max \
+            --label "org.opencontainers.image.source=https://github.com/$REPOSITORY" \
+            --label "org.opencontainers.image.revision=$UPSTREAM_SHA" \
+            --label 'org.opencontainers.image.licenses=MIT' \
+            --tag "$IMAGE:latest" --tag "$IMAGE:sha-$UPSTREAM_SHA"
+
+      - name: Smoke-test before publishing
+        if: steps.upstream.outputs.build == 'true'
+        env:
+          IMAGE: ${{ steps.upstream.outputs.image }}
+        run: bash ci/smoke-test.sh "$IMAGE:latest"
+
+      - name: Publish tested image to GHCR
+        if: steps.upstream.outputs.build == 'true'
+        env:
+          IMAGE: ${{ steps.upstream.outputs.image }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+          REGISTRY_TOKEN: ${{ github.token }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          docker push "$IMAGE:sha-$UPSTREAM_SHA"
+          docker push "$IMAGE:latest"
+          docker logout ghcr.io
+
+      - name: Record successful upstream revision
+        if: steps.upstream.outputs.build == 'true'
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+          IMAGE: ${{ steps.upstream.outputs.image }}
+        run: |
+          printf '%s\n' "$UPSTREAM_SHA" > .upstream-sha
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .upstream-sha
+          if ! git diff --cached --quiet; then
+            git commit -m "Record published upstream $UPSTREAM_SHA"
+            git push origin HEAD:container
+          fi
+          {
+            echo '### Published AMD64 image'
+            echo "- Image: \`$IMAGE:latest\`"
+            echo "- Revision tag: \`$IMAGE:sha-$UPSTREAM_SHA\`"
+            echo "- Upstream: https://github.com/MiaAI-Lab/sparkDash/commit/$UPSTREAM_SHA"
+            echo '- Passed: AMD64 architecture, frontend, authenticated health/API, rejected unauthenticated API, WebSocket.'
+          } >> "$GITHUB_STEP_SUMMARY"

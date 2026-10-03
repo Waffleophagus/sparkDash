@@ -1,0 +1,19 @@
+# For remote Spark monitoring; no privileged host mounts are needed.
+services:
+  sparkdash:
+    image: ghcr.io/waffleophagus/sparkdash:latest
+    platform: linux/amd64
+    container_name: sparkDash
+    restart: unless-stopped
+    ports:
+      - "5555:5555"
+    environment:
+      BIND_HOST: 0.0.0.0
+      PORT: "5555"
+      SPARKDASH_ALLOW_OPEN_REMOTE: "0"
+      SPARKDASH_TOKEN: ${SPARKDASH_TOKEN:?Set SPARKDASH_TOKEN in your .env file}
+    volumes:
+      - /mnt/user/appdata/sparkdash:/app/config
+      # Optional dedicated SSH key, readable by container root:
+      # - /mnt/user/appdata/sparkdash-ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+      # - /mnt/user/appdata/sparkdash-ssh/known_hosts:/root/.ssh/known_hosts:ro
