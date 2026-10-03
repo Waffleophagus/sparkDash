@@ -110,6 +110,8 @@ jobs:
           UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
           IMAGE: ${{ steps.upstream.outputs.image }}
         run: |
+          # Documentation/configuration can advance while the image is building.
+          git pull --ff-only origin container
           printf '%s\n' "$UPSTREAM_SHA" > .upstream-sha
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
