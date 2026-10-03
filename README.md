@@ -43,14 +43,24 @@ Use `unraid/compose.yml` with Compose Manager, or create an equivalent container
 in Unraid's Docker UI:
 
 - Repository: `ghcr.io/waffleophagus/sparkdash:latest`
-- Network: bridge; TCP host port 5555 → container port 5555
+- Network: host; the application binds only to `127.0.0.1:5555`
 - Path: `/mnt/user/appdata/sparkdash` → `/app/config` (read/write)
-- Variables: `BIND_HOST=0.0.0.0`, `PORT=5555`,
-  `SPARKDASH_ALLOW_OPEN_REMOTE=0`, `SPARKDASH_TOKEN=<random token>`
+- Variables: `BIND_HOST=127.0.0.1`, `PORT=5555`,
+  `SPARKDASH_ALLOW_OPEN_REMOTE=0`
 - Restart policy: `unless-stopped`
 
-For Compose, copy `unraid/.env.example` to `.env` beside the Compose file and
-replace the token. Open `http://172.16.1.100:5555` and authenticate with that token.
+From your laptop, run:
+
+```sh
+ssh -N -L 5555:127.0.0.1:5555 root@172.16.1.100
+```
+
+Then open `http://127.0.0.1:5555`. For shared browser access, put an authenticated
+HTTPS reverse proxy in front of this loopback service, including WebSocket upgrades.
+Upstream currently applies its bearer middleware to static assets as well as APIs,
+so a simple direct LAN bind with a token is not a complete browser login flow.
+This configuration follows upstream's documented SSH-tunnel/proxy approach.
+
 Add Spark machines as **remote** units using IPs reachable from Unraid. Optional
 SSH key mounts are shown in the Compose file; passwords can also be configured
 in the UI. Back up the entire appdata directory, including its generated encryption
@@ -62,4 +72,4 @@ Loopback-only services on remote Sparks may need upstream's SSH-tunnel support.
 Published images do not automatically update the running Unraid container; update
 it through Unraid when ready. Use a commit tag instead of `latest` to pin a release.
 
-Application license: upstream MIT; see `main:LICENSE`.
+Application license: upstream MIT; see `LICENSE`.

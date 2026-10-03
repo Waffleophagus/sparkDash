@@ -1,17 +1,15 @@
-# For remote Spark monitoring; no privileged host mounts are needed.
+# Remote Spark monitoring; browser access via SSH tunnel or authenticated proxy.
 services:
   sparkdash:
     image: ghcr.io/waffleophagus/sparkdash:latest
     platform: linux/amd64
     container_name: sparkDash
     restart: unless-stopped
-    ports:
-      - "5555:5555"
+    network_mode: host
     environment:
-      BIND_HOST: 0.0.0.0
-      PORT: "5555"
+      BIND_HOST: 127.0.0.1
+      PORT: ${PORT:-5555}
       SPARKDASH_ALLOW_OPEN_REMOTE: "0"
-      SPARKDASH_TOKEN: ${SPARKDASH_TOKEN:?Set SPARKDASH_TOKEN in your .env file}
     volumes:
       - /mnt/user/appdata/sparkdash:/app/config
       # Optional dedicated SSH key, readable by container root:
