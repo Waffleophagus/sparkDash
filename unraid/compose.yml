@@ -1,0 +1,17 @@
+# Remote Spark monitoring; browser access via SSH tunnel or authenticated proxy.
+services:
+  sparkdash:
+    image: ghcr.io/waffleophagus/sparkdash:latest
+    platform: linux/amd64
+    container_name: sparkDash
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      BIND_HOST: 127.0.0.1
+      PORT: ${PORT:-5555}
+      SPARKDASH_ALLOW_OPEN_REMOTE: "0"
+    volumes:
+      - /mnt/user/appdata/sparkdash:/app/config
+      # Optional dedicated SSH key, readable by container root:
+      # - /mnt/user/appdata/sparkdash-ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+      # - /mnt/user/appdata/sparkdash-ssh/known_hosts:/root/.ssh/known_hosts:ro
