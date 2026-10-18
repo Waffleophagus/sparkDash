@@ -39,13 +39,21 @@ jobs:
         id: upstream
         env:
           REPOSITORY: ${{ github.repository }}
+          UPSTREAM: MiaAI-Lab/sparkDash
           EVENT_NAME: ${{ github.event_name }}
           FORCE: ${{ inputs.force || false }}
+          # GITHUB_TOKEN can never update workflow files, so syncing main fails
+          # whenever upstream touches .github/workflows. A PAT with the
+          # `workflow` scope in UPSTREAM_SYNC_TOKEN lets the sync succeed.
+          SYNC_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          gh api --method POST "repos/$REPOSITORY/merge-upstream" -f branch=main
-          sha=$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          # Mirroring main is best-effort; the image is built from upstream directly.
+          if ! GH_TOKEN="$SYNC_TOKEN" gh api --method POST "repos/$REPOSITORY/merge-upstream" -f branch=main; then
+            echo "::warning::Could not sync $REPOSITORY main with upstream (set UPSTREAM_SYNC_TOKEN to a PAT with the workflow scope)."
+          fi
+          sha=$(gh api "repos/$UPSTREAM/git/ref/heads/main" --jq .object.sha)
           image="ghcr.io/${REPOSITORY,,}"
           previous=$(cat .upstream-sha 2>/dev/null || true)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -61,6 +69,7 @@ jobs:
         if: steps.upstream.outputs.build == 'true'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          repository: MiaAI-Lab/sparkDash
           ref: ${{ steps.upstream.outputs.sha }}
           path: source
           persist-credentials: false
