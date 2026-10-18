@@ -51,6 +51,7 @@ jobs:
           set -euo pipefail
           # Mirroring main is best-effort; the image is built from upstream directly.
           if ! GH_TOKEN="$SYNC_TOKEN" gh api --method POST "repos/$REPOSITORY/merge-upstream" -f branch=main; then
+            echo
             echo "::warning::Could not sync $REPOSITORY main with upstream (set UPSTREAM_SYNC_TOKEN to a PAT with the workflow scope)."
           fi
           sha=$(gh api "repos/$UPSTREAM/git/ref/heads/main" --jq .object.sha)
