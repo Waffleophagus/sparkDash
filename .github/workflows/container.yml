@@ -1,4 +1,4 @@
-name: Sync upstream and publish AMD64 image
+name: Publish AMD64 image from upstream
 
 on:
   schedule:
@@ -35,17 +35,17 @@ jobs:
         with:
           ref: container
 
-      - name: Sync upstream main and decide whether to build
+      - name: Resolve upstream main and decide whether to build
         id: upstream
         env:
           REPOSITORY: ${{ github.repository }}
+          UPSTREAM: MiaAI-Lab/sparkDash
           EVENT_NAME: ${{ github.event_name }}
           FORCE: ${{ inputs.force || false }}
         shell: bash
         run: |
           set -euo pipefail
-          gh api --method POST "repos/$REPOSITORY/merge-upstream" -f branch=main
-          sha=$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          sha=$(gh api "repos/$UPSTREAM/git/ref/heads/main" --jq .object.sha)
           image="ghcr.io/${REPOSITORY,,}"
           previous=$(cat .upstream-sha 2>/dev/null || true)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -61,6 +61,7 @@ jobs:
         if: steps.upstream.outputs.build == 'true'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          repository: MiaAI-Lab/sparkDash
           ref: ${{ steps.upstream.outputs.sha }}
           path: source
           persist-credentials: false
