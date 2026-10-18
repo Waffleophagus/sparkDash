@@ -1,4 +1,4 @@
-name: Sync upstream and publish AMD64 image
+name: Publish AMD64 image from upstream
 
 on:
   schedule:
@@ -35,25 +35,16 @@ jobs:
         with:
           ref: container
 
-      - name: Sync upstream main and decide whether to build
+      - name: Resolve upstream main and decide whether to build
         id: upstream
         env:
           REPOSITORY: ${{ github.repository }}
           UPSTREAM: MiaAI-Lab/sparkDash
           EVENT_NAME: ${{ github.event_name }}
           FORCE: ${{ inputs.force || false }}
-          # GITHUB_TOKEN can never update workflow files, so syncing main fails
-          # whenever upstream touches .github/workflows. A PAT with the
-          # `workflow` scope in UPSTREAM_SYNC_TOKEN lets the sync succeed.
-          SYNC_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          # Mirroring main is best-effort; the image is built from upstream directly.
-          if ! GH_TOKEN="$SYNC_TOKEN" gh api --method POST "repos/$REPOSITORY/merge-upstream" -f branch=main; then
-            echo
-            echo "::warning::Could not sync $REPOSITORY main with upstream (set UPSTREAM_SYNC_TOKEN to a PAT with the workflow scope)."
-          fi
           sha=$(gh api "repos/$UPSTREAM/git/ref/heads/main" --jq .object.sha)
           image="ghcr.io/${REPOSITORY,,}"
           previous=$(cat .upstream-sha 2>/dev/null || true)
